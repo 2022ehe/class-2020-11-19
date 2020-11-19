@@ -34,18 +34,83 @@ week_11_folds <- vfold_cv(week_11_train, v = 5)
 
 **Prompt:** Explore a variety models which explain `primary_06` as a function of the variables in our data set. Make sure to explore some interaction terms. 
 
-* Come up with at least two models that a) you like and would be willing to defend and b) are somewhat different from one another. The two most common model types in these situations are "simple" and "full". The former includes a minimum number of variables. The latter errs on the side of variable inclusion and the creation of interaction terms.
+* Come up with at least two models that a) you like and would be willing to defend and b) are somewhat different from one another. The two most common model types in these situations are "simple" (1-2 variables) and "full" (more variables). The former includes a minimum number of variables. The latter errs on the side of variable inclusion and the creation of interaction terms.
+
+```{r}
+
+model_1 <- stan_glm(primary_06 ~ primary_04,
+                    data = week_11_train,
+                    refresh = 0)
+
+model_2 <- stan_glm(primary_06 ~ age,
+                    data = week_11_train,
+                    refresh = 0)
+
+print(model_1, digits = 4)
+print(model_2, digits = 4)
+
+# Simple model
+model_3 <- workflow() %>%
+  add_model(linear_reg() %>%
+              set_engine("lm") %>%
+              set_mode("regression")) %>%
+  add_recipe(recipe(primary_06 ~ primary_04 + age + treatment,
+                    data = week_11_train) %>%
+               step_dummy(all_nominal()))
+
+model_3 %>% 
+  fit(data = week_11_train) %>% 
+  predict(new_data = week_11_test) %>% 
+  bind_cols(week_11_test$primary_06) %>%
+  metrics(truth = `...2`,
+          estimate = `.pred`)
+
+# Full Model
+model_4 <- workflow() %>%
+  add_model(linear_reg() %>%
+              set_engine("lm") %>%
+              set_mode("regression")) %>%
+  add_recipe(recipe(primary_06 ~ primary_04 + age + sex + solo + treatment + primary_02,
+                    data = week_11_train) %>%
+            step_dummy(all_nominal()) %>%
+            step_interact( ~ starts_with("sex"):starts_with("solo")))
+
+model_4 %>% 
+  fit(data = week_11_train) %>% 
+  predict(new_data = week_11_test) %>% 
+  bind_cols(week_11_test$primary_06) %>%
+  metrics(truth = `...2`,
+          estimate = `.pred`)
+  
+```
+
 
 * Which data set should we use for this? Why?
+
+Use training data set, becasue we don't want overfit our data
 
 * What does it mean if, for example, the coefficient of `treatmentNeighbors` varies across models?
 
 * Do things change if we start using all the data? Is there a danger in doing so?
 
+danger of overfitting
 
 ## Scene 2
 
 **Prompt:** Compare your two models using cross-validation.
+
+```{r sc2}
+model_3 %>%
+  fit_resamples(resamples = week_11_folds, 
+                control = control_resamples(save_pred = TRUE)) %>%
+  collect_metrics()
+
+model_4 %>%
+  fit_resamples(resamples = week_11_folds, 
+                control = control_resamples(save_pred = TRUE)) %>%
+  collect_metrics()
+
+```
 
 
 ## Scene 3
@@ -53,7 +118,39 @@ week_11_folds <- vfold_cv(week_11_train, v = 5)
 **Prompt:** Fit the model and then estimate what RMSE will be in the future.
 
 * If you have time, redo all the important steps above with the full data set.
+```{r}
+week_11_full <- shaming %>% 
+  mutate(age = 2006 - birth_year) %>% 
+  mutate(treatment = fct_relevel(treatment, "Control")) %>% 
+  mutate(solo = ifelse(hh_size == 1, TRUE, FALSE)) %>% 
+  select(-general_04, -no_of_names, -birth_year, -hh_size)
 
+week_11_full_split <- initial_split(week_11_full)
+week_11_full_train <- training(week_11_full_split)
+week_11_full_test  <- testing(week_11_full_split)
+week_11_full_folds <- vfold_cv(week_11_full_train, v = 5)
+
+model_5 <- workflow() %>%
+  add_model(linear_reg() %>%
+              set_engine("lm") %>%
+              set_mode("regression")) %>%
+  add_recipe(recipe(primary_06 ~ primary_04 + age + sex + solo + treatment + primary_02,
+                    data = week_11_full_train) %>%
+            step_dummy(all_nominal()) %>%
+            step_interact( ~ starts_with("sex"):starts_with("solo")))
+
+model_5 %>% 
+  fit(data = week_11_full_train) %>% 
+  predict(new_data = week_11_full_test) %>% 
+  bind_cols(week_11_full_test$primary_06) %>%
+  metrics(truth = `...2`,
+          estimate = `.pred`)
+
+model_5 %>%
+  fit_resamples(resamples = week_11_full_folds, 
+                control = control_resamples(save_pred = TRUE)) %>%
+  collect_metrics()
+```
 
 
 ## Optional Problems
